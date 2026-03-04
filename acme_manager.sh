@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# ACME 全球全能版证书管理脚本（修复管道输入版）
-# 支持：多域名独立申请、独立删除、互不干扰
-# 支持：阿里云、腾讯云、Cloudflare、HTTP、Standalone、ECC
+# ACME 全球全能版证书管理脚本（终极修复版）
+# 修复：邮箱格式验证 + 强制读取终端输入 + 清理无效邮箱配置
 
 set -e
 
@@ -21,18 +20,37 @@ read_tty() {
     read -r "$@" < /dev/tty
 }
 
-# 检查并设置邮箱
-check_email() {
-    if [ ! -f "$ACME_CONF" ] || ! grep -q "ACCOUNT_EMAIL" "$ACME_CONF"; then
-        echo -e "${YELLOW}请输入邮箱（用于证书过期提醒）${NC}"
-        read_tty -p "邮箱: " USER_EMAIL
-        if [ -z "$USER_EMAIL" ]; then
-            echo -e "${RED}邮箱不能为空${NC}"
-            exit 1
-        fi
-        echo "ACCOUNT_EMAIL='$USER_EMAIL'" >> "$ACME_CONF"
-        echo -e "${GREEN}邮箱已保存: $USER_EMAIL${NC}"
+# 验证邮箱格式是否合法
+validate_email() {
+    local email="$1"
+    if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        echo -e "${RED}邮箱格式错误！例如正确格式：yourname@gmail.com${NC}"
+        return 1
     fi
+    return 0
+}
+
+# 检查并强制设置有效邮箱（覆盖错误配置）
+check_email() {
+    # 先清理旧的无效邮箱配置
+    sed -i '/ACCOUNT_EMAIL=/d' "$ACME_CONF" 2>/dev/null || true
+
+    echo -e "${YELLOW}===== 必须配置有效邮箱 =====${NC}"
+    echo -e "${YELLOW}作用：Let's Encrypt 发送证书过期提醒${NC}"
+    while true; do
+        read_tty -p "请输入有效邮箱: " USER_EMAIL
+        # 验证邮箱格式
+        if validate_email "$USER_EMAIL"; then
+            break
+        fi
+    done
+
+    # 写入正确的邮箱配置
+    echo "ACCOUNT_EMAIL='$USER_EMAIL'" > "$ACME_CONF"
+    echo -e "${GREEN}邮箱已保存并验证有效: $USER_EMAIL${NC}"
+    
+    # 强制 acme.sh 读取新邮箱
+    export ACCOUNT_EMAIL="$USER_EMAIL"
 }
 
 # 检查依赖 + 安装 acme.sh
@@ -53,13 +71,14 @@ check_acme() {
         echo -e "${GREEN}acme.sh 安装完成${NC}"
     fi
 
+    # 强制检查邮箱（不管有没有配置，都重新验证）
     check_email
     $ACME_SH --set-default-ca --server letsencrypt >/dev/null 2>&1
 }
 
 # 申请证书（多域名完全独立）
 issue_cert() {
-    echo -e "\n${BLUE}=== 申请 ECC 证书（新域名随便申请，互不影响）===${NC}"
+    echo -e "\n${BLUE}=== 申请 ECC 证书 ===${NC}"
     read_tty -p "请输入域名 (如 ccc.bbb.com): " domain
     [ -z "$domain" ] && return
 
@@ -76,6 +95,11 @@ issue_cert() {
             $ACME_SH --issue -d "$domain" -w "$wr" --keylength ec-256
             ;;
         2)
+            # 确保 80 端口未被占用
+            if lsof -i:80 >/dev/null 2>&1; then
+                echo -e "${RED}80 端口被占用！请先停止占用 80 端口的服务（如 Nginx/Apache）${NC}"
+                return
+            fi
             $ACME_SH --issue -d "$domain" --standalone --keylength ec-256
             ;;
         3)
@@ -144,7 +168,7 @@ renew_manager() {
 # 主菜单
 menu() {
     echo -e "\n========================================"
-    echo "       ACME 全能证书管理脚本（多域名版）"
+    echo "       ACME 全能证书管理脚本（终极版）"
     echo "========================================"
     echo " 1) 申请新证书   2) 所有证书列表   3) 删除域名证书"
     echo " 4) 查看证书路径 5) 续期管理       6) 退出"
@@ -161,7 +185,7 @@ menu() {
         4) show_cert_path ;;
         5) renew_manager ;;
         6) exit 0 ;;
-        *) echo -e "${RED}输入错误${NC}" ;;
+        *) echo -e "${RED}输入错误，请重新选择${NC}" ;;
     esac
 }
 
