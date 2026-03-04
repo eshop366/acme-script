@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ACME 全球全能版证书管理脚本
+# ACME 全球全能版证书管理脚本（修复管道输入版）
 # 支持：多域名独立申请、独立删除、互不干扰
 # 支持：阿里云、腾讯云、Cloudflare、HTTP、Standalone、ECC
 
@@ -16,11 +16,16 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# 关键修复：强制从终端读取输入
+read_tty() {
+    read -r "$@" < /dev/tty
+}
+
 # 检查并设置邮箱
 check_email() {
     if [ ! -f "$ACME_CONF" ] || ! grep -q "ACCOUNT_EMAIL" "$ACME_CONF"; then
         echo -e "${YELLOW}请输入邮箱（用于证书过期提醒）${NC}"
-        read -p "邮箱: " USER_EMAIL
+        read_tty -p "邮箱: " USER_EMAIL
         if [ -z "$USER_EMAIL" ]; then
             echo -e "${RED}邮箱不能为空${NC}"
             exit 1
@@ -44,7 +49,7 @@ check_acme() {
     if [ ! -f "$ACME_SH" ]; then
         echo -e "${YELLOW}正在安装 acme.sh...${NC}"
         curl -s https://gitee.com/neilpang/acme.sh/raw/master/acme.sh | sh -s -- --install-online
-        source ~/.bashrc || true
+        source ~/.bashrc 2>/dev/null || true
         echo -e "${GREEN}acme.sh 安装完成${NC}"
     fi
 
@@ -55,7 +60,7 @@ check_acme() {
 # 申请证书（多域名完全独立）
 issue_cert() {
     echo -e "\n${BLUE}=== 申请 ECC 证书（新域名随便申请，互不影响）===${NC}"
-    read -p "请输入域名 (如 ccc.bbb.com): " domain
+    read_tty -p "请输入域名 (如 ccc.bbb.com): " domain
     [ -z "$domain" ] && return
 
     echo "1) Webroot       (有网站运行)"
@@ -63,33 +68,33 @@ issue_cert() {
     echo "3) Cloudflare    API"
     echo "4) 腾讯云 DNSPod API"
     echo "5) 阿里云        API"
-    read -p "选择验证方式 [1-5]: " m
+    read_tty -p "选择验证方式 [1-5]: " m
 
     case $m in
         1)
-            read -p "Web 根目录: " wr
+            read_tty -p "Web 根目录: " wr
             $ACME_SH --issue -d "$domain" -w "$wr" --keylength ec-256
             ;;
         2)
             $ACME_SH --issue -d "$domain" --standalone --keylength ec-256
             ;;
         3)
-            read -p "CF_Email: " cf_mail
-            read -p "CF_Key: " cf_key
+            read_tty -p "CF_Email: " cf_mail
+            read_tty -p "CF_Key: " cf_key
             export CF_Email="$cf_mail"
             export CF_Key="$cf_key"
             $ACME_SH --issue --dns dns_cf -d "$domain" --keylength ec-256
             ;;
         4)
-            read -p "DP_Id: " dp_id
-            read -p "DP_Key: " dp_key
+            read_tty -p "DP_Id: " dp_id
+            read_tty -p "DP_Key: " dp_key
             export DP_Id="$dp_id"
             export DP_Key="$dp_key"
             $ACME_SH --issue --dns dns_dp -d "$domain" --keylength ec-256
             ;;
         5)
-            read -p "Ali_Key: " ali_key
-            read -p "Ali_Secret: " ali_sec
+            read_tty -p "Ali_Key: " ali_key
+            read_tty -p "Ali_Secret: " ali_sec
             export Ali_Key="$ali_key"
             export Ali_Secret="$ali_sec"
             $ACME_SH --issue --dns dns_ali -d "$domain" --keylength ec-256
@@ -103,7 +108,7 @@ issue_cert() {
 # 查看证书路径（自动识别 ECC / 普通）
 show_cert_path() {
     echo -e "\n${BLUE}=== 查看域名证书路径 ===${NC}"
-    read -p "输入要查看的域名: " domain
+    read_tty -p "输入要查看的域名: " domain
     [ -z "$domain" ] && return
 
     if [ -d "$HOME/.acme.sh/${domain}_ecc" ]; then
@@ -127,10 +132,10 @@ renew_manager() {
     echo "1) 查看 cron 任务"
     echo "2) 安装自动续期任务"
     echo "3) 强制续期所有证书"
-    read -p "选择: " r
+    read_tty -p "选择: " r
 
     case $r in
-        1) crontab -l | grep acme || echo "未配置续期" ;;
+        1) crontab -l 2>/dev/null | grep acme || echo "未配置续期" ;;
         2) $ACME_SH --install-cronjob && echo "自动续期已开启" ;;
         3) $ACME_SH --renew-all --force ;;
     esac
@@ -144,13 +149,13 @@ menu() {
     echo " 1) 申请新证书   2) 所有证书列表   3) 删除域名证书"
     echo " 4) 查看证书路径 5) 续期管理       6) 退出"
     echo "========================================"
-    read -p "请选择: " opt
+    read_tty -p "请选择: " opt
 
     case $opt in
         1) issue_cert ;;
         2) $ACME_SH --list ;;
         3)
-            read -p "输入要删除的旧域名 (如 aaa.bbb.com): " d
+            read_tty -p "输入要删除的旧域名 (如 aaa.bbb.com): " d
             [ -n "$d" ] && $ACME_SH --remove -d "$d" && echo "已删除 $d"
             ;;
         4) show_cert_path ;;
