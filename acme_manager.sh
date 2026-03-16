@@ -7,6 +7,7 @@ set -e
 
 ACME_SH="$HOME/.acme.sh/acme.sh"
 ACME_CONF="$HOME/.acme.sh/account.conf"
+USER_EMAIL=""
 
 # 颜色
 RED='\033[0;31m'
@@ -35,6 +36,8 @@ check_email() {
     # 先清理旧的无效邮箱配置
     sed -i '/ACCOUNT_EMAIL=/d' "$ACME_CONF" 2>/dev/null || true
 
+# 在程序开头强制输入并验证邮箱
+prompt_email() {
     echo -e "${YELLOW}===== 必须配置有效邮箱 =====${NC}"
     echo -e "${YELLOW}作用：Let's Encrypt 发送证书过期提醒${NC}"
     while true; do
@@ -49,6 +52,22 @@ check_email() {
     echo "ACCOUNT_EMAIL='$USER_EMAIL'" > "$ACME_CONF"
     echo -e "${GREEN}邮箱已保存并验证有效: $USER_EMAIL${NC}"
     
+    echo -e "${GREEN}邮箱已验证: $USER_EMAIL${NC}"
+}
+
+# 写入并同步邮箱配置
+sync_email_config() {
+    local conf_dir
+    conf_dir="$(dirname "$ACME_CONF")"
+    mkdir -p "$conf_dir"
+    touch "$ACME_CONF"
+
+    if grep -q '^ACCOUNT_EMAIL=' "$ACME_CONF"; then
+        sed -i "s|^ACCOUNT_EMAIL=.*|ACCOUNT_EMAIL='$USER_EMAIL'|" "$ACME_CONF"
+    else
+        echo "ACCOUNT_EMAIL='$USER_EMAIL'" >> "$ACME_CONF"
+    fi
+
     # 强制 acme.sh 读取新邮箱
     export ACCOUNT_EMAIL="$USER_EMAIL"
 }
@@ -67,12 +86,14 @@ check_acme() {
     if [ ! -f "$ACME_SH" ]; then
         echo -e "${YELLOW}正在安装 acme.sh...${NC}"
         curl -s https://gitee.com/neilpang/acme.sh/raw/master/acme.sh | sh -s -- --install-online
+        curl -s https://gitee.com/neilpang/acme.sh/raw/master/acme.sh | sh -s -- --install-online --accountemail "$USER_EMAIL"
         source ~/.bashrc 2>/dev/null || true
         echo -e "${GREEN}acme.sh 安装完成${NC}"
     fi
 
     # 强制检查邮箱（不管有没有配置，都重新验证）
     check_email
+    sync_email_config
     $ACME_SH --set-default-ca --server letsencrypt >/dev/null 2>&1
 }
 
@@ -98,73 +119,7 @@ issue_cert() {
             # 确保 80 端口未被占用
             if lsof -i:80 >/dev/null 2>&1; then
                 echo -e "${RED}80 端口被占用！请先停止占用 80 端口的服务（如 Nginx/Apache）${NC}"
-                return
-            fi
-            $ACME_SH --issue -d "$domain" --standalone --keylength ec-256
-            ;;
-        3)
-            read_tty -p "CF_Email: " cf_mail
-            read_tty -p "CF_Key: " cf_key
-            export CF_Email="$cf_mail"
-            export CF_Key="$cf_key"
-            $ACME_SH --issue --dns dns_cf -d "$domain" --keylength ec-256
-            ;;
-        4)
-            read_tty -p "DP_Id: " dp_id
-            read_tty -p "DP_Key: " dp_key
-            export DP_Id="$dp_id"
-            export DP_Key="$dp_key"
-            $ACME_SH --issue --dns dns_dp -d "$domain" --keylength ec-256
-            ;;
-        5)
-            read_tty -p "Ali_Key: " ali_key
-            read_tty -p "Ali_Secret: " ali_sec
-            export Ali_Key="$ali_key"
-            export Ali_Secret="$ali_sec"
-            $ACME_SH --issue --dns dns_ali -d "$domain" --keylength ec-256
-            ;;
-        *)
-            echo -e "${RED}无效选项${NC}"
-            ;;
-    esac
-}
-
-# 查看证书路径（自动识别 ECC / 普通）
-show_cert_path() {
-    echo -e "\n${BLUE}=== 查看域名证书路径 ===${NC}"
-    read_tty -p "输入要查看的域名: " domain
-    [ -z "$domain" ] && return
-
-    if [ -d "$HOME/.acme.sh/${domain}_ecc" ]; then
-        DIR="$HOME/.acme.sh/${domain}_ecc"
-    elif [ -d "$HOME/.acme.sh/${domain}" ]; then
-        DIR="$HOME/.acme.sh/${domain}"
-    else
-        echo -e "${RED}未找到该域名证书${NC}"
-        return
-    fi
-
-    echo -e "\n证书目录: ${GREEN}$DIR${NC}"
-    echo -e "FullChain: ${GREEN}$DIR/fullchain.cer${NC}"
-    echo -e "PrivKey   : ${GREEN}$DIR/$domain.key${NC}"
-    echo -e "Cert      : ${GREEN}$DIR/$domain.cer${NC}"
-}
-
-# 续期管理
-renew_manager() {
-    echo -e "\n=== 续期管理 ==="
-    echo "1) 查看 cron 任务"
-    echo "2) 安装自动续期任务"
-    echo "3) 强制续期所有证书"
-    read_tty -p "选择: " r
-
-    case $r in
-        1) crontab -l 2>/dev/null | grep acme || echo "未配置续期" ;;
-        2) $ACME_SH --install-cronjob && echo "自动续期已开启" ;;
-        3) $ACME_SH --renew-all --force ;;
-    esac
-}
-
+@@ -168,27 +177,28 @@ renew_manager() {
 # 主菜单
 menu() {
     echo -e "\n========================================"
@@ -190,5 +145,6 @@ menu() {
 }
 
 # 启动
+prompt_email
 check_acme
 while true; do menu; done
