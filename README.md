@@ -43,10 +43,10 @@ source ~/.bashrc
 curl -O https://raw.githubusercontent.com/eshop366/acme-script/main/acme_manager.sh
 
 # 赋予执行权限
-chmod +x ssl-manager.sh
+chmod +x acme_manager.sh
 
 # 运行
-./ssl-manager.sh
+./acme_manager.sh
 ```
 
 ### 第四步：按菜单操作
@@ -101,7 +101,7 @@ chmod +x ssl-manager.sh
 **Q：运行脚本提示"Permission denied"怎么办？**
 
 ```bash
-chmod +x ssl-manager.sh
+chmod +x acme_manager.sh
 ```
 
 ---
