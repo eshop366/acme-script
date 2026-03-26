@@ -40,7 +40,7 @@ source ~/.bashrc
 
 ```bash
 # 下载脚本
-curl -O https://your-repo-url/ssl-manager.sh
+curl -O https://raw.githubusercontent.com/eshop366/acme-script/main/acme_manager.sh
 
 # 赋予执行权限
 chmod +x ssl-manager.sh
@@ -157,4 +157,4 @@ MIT License © 2024
 
 ---
 
-> 💡 如有问题，欢迎提交 [Issue](https://github.com/your-repo/issues)。
+> 💡 如有问题，欢迎提交 [Issue]([](https://github.com/eshop366/acme-script/issues)。
