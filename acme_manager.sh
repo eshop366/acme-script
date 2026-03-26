@@ -133,7 +133,10 @@ issue_cert() {
 
     if "$ACME_SH" --issue -d "$domain" --standalone; then
         echo -e "\n${GREEN}✅ 证书申请成功！${NC}"
-        echo -e "证书路径: ${CYAN}$HOME/.acme.sh/${domain}/${NC}"
+        echo -e "证书目录  : ${CYAN}$HOME/.acme.sh/${domain}/${NC}"
+        echo -e "全链证书  : ${CYAN}$HOME/.acme.sh/${domain}/fullchain.cer${NC}  ← 配置 Web 服务器请用此文件"
+        echo -e "私钥文件  : ${CYAN}$HOME/.acme.sh/${domain}/${domain}.key${NC}"
+        echo -e "\n${YELLOW}⚠️  请勿直接使用 .cer 单域名证书，否则浏览器会提示「不安全」${NC}"
     else
         echo -e "\n${RED}❌ 证书申请失败，请检查：${NC}"
         echo -e "  1. 域名是否已正确解析到本服务器 IP"
@@ -170,25 +173,23 @@ deploy_cert() {
                 return
             fi
 
-            local cert_file="/etc/ssl/${domain}.crt"
+            local fullchain_file="/etc/ssl/${domain}_fullchain.crt"
             local key_file="/etc/ssl/${domain}.key"
 
-            echo -e "${YELLOW}正在安装证书到 ${cert_file} ...${NC}"
+            echo -e "${YELLOW}正在安装证书到 /etc/ssl/ ...${NC}"
 
             if "$ACME_SH" --install-cert -d "$domain" \
-                --cert-file  "$cert_file" \
-                --key-file   "$key_file" \
-                --fullchain-file "/etc/ssl/${domain}_fullchain.crt"; then
+                --fullchain-file "$fullchain_file" \
+                --key-file       "$key_file"; then
 
                 echo -e "${GREEN}✅ 证书文件已复制到:${NC}"
-                echo -e "  证书: ${CYAN}${cert_file}${NC}"
-                echo -e "  私钥: ${CYAN}${key_file}${NC}"
-                echo -e "  全链: ${CYAN}/etc/ssl/${domain}_fullchain.crt${NC}"
+                echo -e "  全链证书: ${CYAN}${fullchain_file}${NC}  ← Web 服务器使用此文件"
+                echo -e "  私钥    : ${CYAN}${key_file}${NC}"
 
                 if [ "$web_opt" -eq 1 ]; then
                     echo -e "\n${YELLOW}请在 Nginx 配置中加入以下内容并 reload：${NC}"
-                    echo -e "${CYAN}  ssl_certificate     /etc/ssl/${domain}_fullchain.crt;${NC}"
-                    echo -e "${CYAN}  ssl_certificate_key /etc/ssl/${domain}.key;${NC}"
+                    echo -e "${CYAN}  ssl_certificate     ${fullchain_file};${NC}"
+                    echo -e "${CYAN}  ssl_certificate_key ${key_file};${NC}"
                     echo ""
                     read -rp "是否立即 reload Nginx？[y/N]: " confirm
                     [[ "$confirm" =~ ^[Yy]$ ]] && nginx -t && systemctl reload nginx \
@@ -196,8 +197,8 @@ deploy_cert() {
                         || echo -e "${YELLOW}跳过重载${NC}"
                 else
                     echo -e "\n${YELLOW}请在 Apache 配置中加入以下内容并 reload：${NC}"
-                    echo -e "${CYAN}  SSLCertificateFile    /etc/ssl/${domain}_fullchain.crt${NC}"
-                    echo -e "${CYAN}  SSLCertificateKeyFile /etc/ssl/${domain}.key${NC}"
+                    echo -e "${CYAN}  SSLCertificateFile    ${fullchain_file}${NC}"
+                    echo -e "${CYAN}  SSLCertificateKeyFile ${key_file}${NC}"
                     echo ""
                     read -rp "是否立即 reload Apache？[y/N]: " confirm
                     [[ "$confirm" =~ ^[Yy]$ ]] && \
